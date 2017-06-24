@@ -15,7 +15,7 @@ export class APIService {
     private clientSecret: string | undefined;
 
     constructor(public http: Http, public authService: AuthService) {
-        this.apiURL = AppConfig.config.apiUrl;
+        this.apiURL = AppConfig.config.apiURL;
         this.clientId = AppConfig.config.clientId;
         this.clientSecret = AppConfig.config.clientSecret;
     }
