@@ -6,6 +6,7 @@ import 'rxjs/add/operator/catch';
 import 'rxjs/add/operator/map';
 
 import { AuthService } from './auth.service';
+import { AppConfig } from './app-config.factory';
 
 @Injectable()
 export class APIService {
@@ -14,12 +15,9 @@ export class APIService {
     private clientSecret: string | undefined;
 
     constructor(public http: Http, public authService: AuthService) {
-    }
-
-    public setConfig(apiURL: string, clientId?: string, clientSecret?: string) {
-        this.apiURL = apiURL;
-        this.clientId = clientId;
-        this.clientSecret = clientSecret;
+        this.apiURL = AppConfig.config.apiUrl;
+        this.clientId = AppConfig.config.clientId;
+        this.clientSecret = AppConfig.config.clientSecret;
     }
 
     public get(path: string, query?: any, options?: any): Observable<any> {

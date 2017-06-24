@@ -3,6 +3,8 @@ import { NgModule, ModuleWithProviders } from '@angular/core';
 import { LocalStorageService } from '../common/local-storage.service';
 import { AuthService } from '../common/auth.service';
 import { APIService } from '../common/api.service';
+import { ILizardConfig } from '../common/lizard-config.interface';
+import { AppConfig } from '../common/app-config.factory';
 
 import { UsersService } from '../resources/users.service';
 
@@ -17,7 +19,9 @@ import { UsersService } from '../resources/users.service';
     ]
 })
 export class LizardSDKModule {
-    public static forRoot(): ModuleWithProviders {
+    public static forRoot(config: ILizardConfig): ModuleWithProviders {
+        AppConfig.setInitialConfig(config);
+
         return {
             ngModule: LizardSDKModule,
             providers: [

@@ -1,6 +1,6 @@
 {
     "name": "lizard-angular-sdk",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "description": "Lizard API SDK for Angular",
     "main": "./bundles/lizard-angular-sdk.umd.js",
     "module": "./modules/lizard-angular-sdk.es5.js",
