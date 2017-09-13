@@ -9,26 +9,28 @@ import { Subject } from 'rxjs/Subject';
 import { AuthService } from '../common/auth.service';
 import { CRUDService } from '../common/crud.service';
 
+import { AppConfigService } from '../common/app-config.service';
+import { EventManagerService } from '../common/event-manager.service';
+
 @Injectable()
 export class UsersService extends CRUDService {
-    private localOnUserLogsIn: Subject<any> = new Subject();
-
-    public get onUserLogsIn(): Observable<any> {
-        return this.localOnUserLogsIn.asObservable();
+    constructor(public http: Http,
+        public authService: AuthService,
+        public appConfig: AppConfigService,
+        public eventsManagerService: EventManagerService
+    ) {
+        super('users', http, authService, appConfig, eventsManagerService);
     }
 
-    constructor(public http: Http, public authService: AuthService) {
-        super('users', http, authService);
-    }
-
-    public login(username: string, password: string): Observable<any> {
-        return this.post('login', { username, password }, null, { credentials: false })
+    public register(data: any): Observable<any> {
+        return this.post(this.resource + '/register', data, null, { credentials: 'app' })
             .map((loginResponse) => {
                 if (loginResponse && loginResponse.access_token) {
                     const accessToken = loginResponse.access_token;
                     this.authService.setAccessToken(accessToken);
+                    this.authService.setUser(loginResponse.data.identity);
 
-                    this.localOnUserLogsIn.next();
+                    this.eventsManagerService.trigger(EventManagerService.ON_USER_SIGN_IN);
                 }
 
                 return Observable.of(loginResponse);

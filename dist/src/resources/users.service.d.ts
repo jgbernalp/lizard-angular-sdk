@@ -3,12 +3,14 @@ import { Observable } from 'rxjs/Observable';
 import 'rxjs/add/observable/of';
 import { AuthService } from '../common/auth.service';
 import { CRUDService } from '../common/crud.service';
+import { AppConfigService } from '../common/app-config.service';
+import { EventManagerService } from '../common/event-manager.service';
 export declare class UsersService extends CRUDService {
     http: Http;
     authService: AuthService;
-    private localOnUserLogsIn;
-    readonly onUserLogsIn: Observable<any>;
-    constructor(http: Http, authService: AuthService);
-    login(username: string, password: string): Observable<any>;
+    appConfig: AppConfigService;
+    eventsManagerService: EventManagerService;
+    constructor(http: Http, authService: AuthService, appConfig: AppConfigService, eventsManagerService: EventManagerService);
+    register(data: any): Observable<any>;
     logout(): void;
 }

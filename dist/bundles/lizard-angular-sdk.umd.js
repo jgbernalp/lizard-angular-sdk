@@ -6409,8 +6409,12 @@ JsonpModule.ctorParameters = function () { return []; };
 var VERSION = new _angular_core.Version('4.1.3');
 
 var Observable_1$1 = require('../../Observable');
+var throw_1 = require('../../observable/throw');
+Observable_1$1.Observable.throw = throw_1._throw;
+
+var Observable_1$2 = require('../../Observable');
 var of_1 = require('../../observable/of');
-Observable_1$1.Observable.of = of_1.of;
+Observable_1$2.Observable.of = of_1.of;
 
 var __extends = (undefined && undefined.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -6453,7 +6457,7 @@ var LocalStorageService = (function () {
      * @return {?}
      */
     LocalStorageService.prototype.remove = function (key) {
-        localStorage.removeItem(key);
+        localStorage.removeItem(this.prefix + key);
     };
     return LocalStorageService;
 }());
@@ -6464,14 +6468,76 @@ LocalStorageService.decorators = [
  * @nocollapse
  */
 LocalStorageService.ctorParameters = function () { return []; };
+var EventManagerService = (function () {
+    function EventManagerService() {
+        this.events = {
+            '_onUserSignOut': new rxjs_Subject.Subject(),
+            '_onUserSignIn': new rxjs_Subject.Subject(),
+            '_onUserChanged': new rxjs_Subject.Subject()
+        };
+    }
+    Object.defineProperty(EventManagerService.prototype, "onUserSignIn", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.events['_onUserSignIn'].asObservable();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(EventManagerService.prototype, "onUserSignOut", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.events['_onUserSignOut'].asObservable();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(EventManagerService.prototype, "onUserChanged", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.events['_onUserChanged'].asObservable();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    /**
+     * @param {?} event
+     * @param {?=} data
+     * @return {?}
+     */
+    EventManagerService.prototype.trigger = function (event, data) {
+        if (this.events[event] && this.events[event] instanceof rxjs_Subject.Subject) {
+            this.events[event].next(data || {});
+        }
+    };
+    return EventManagerService;
+}());
+EventManagerService.ON_USER_SIGN_OUT = '_onUserSignOut';
+EventManagerService.ON_USER_SIGN_IN = '_onUserSignIn';
+EventManagerService.ON_USER_CHANGED = '_onUserChanged';
+EventManagerService.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+EventManagerService.ctorParameters = function () { return []; };
 var AuthService = (function () {
     /**
      * @param {?} http
      * @param {?} localStorage
+     * @param {?} eventManager
      */
-    function AuthService(http, localStorage) {
+    function AuthService(http, localStorage, eventManager) {
         this.http = http;
         this.localStorage = localStorage;
+        this.eventManager = eventManager;
     }
     /**
      * @param {?} accessToken
@@ -6480,6 +6546,14 @@ var AuthService = (function () {
     AuthService.prototype.setAccessToken = function (accessToken) {
         this.localStorage.set('AT', accessToken);
         this.cachedAccessToken = accessToken;
+    };
+    /**
+     * @param {?} accessToken
+     * @return {?}
+     */
+    AuthService.prototype.setAppAccessToken = function (accessToken) {
+        this.localStorage.set('ATA', accessToken);
+        this.cachedAppAccessToken = accessToken;
     };
     /**
      * @return {?}
@@ -6491,20 +6565,31 @@ var AuthService = (function () {
         return this.cachedAccessToken;
     };
     /**
+     * @return {?}
+     */
+    AuthService.prototype.getAppAccessToken = function () {
+        if (!this.cachedAppAccessToken) {
+            this.cachedAppAccessToken = this.localStorage.get('ATA');
+        }
+        return this.cachedAppAccessToken;
+    };
+    /**
      * @param {?} user
      * @return {?}
      */
     AuthService.prototype.setUser = function (user) {
+        this.cachedUser = user;
         this.localStorage.set('US', user);
+        this.eventManager.trigger(EventManagerService.ON_USER_CHANGED, user);
     };
     /**
      * @return {?}
      */
     AuthService.prototype.getUser = function () {
-        if (!this.cachedAccessToken) {
-            this.cachedAccessToken = this.localStorage.get('US');
+        if (!this.cachedUser) {
+            this.cachedUser = this.localStorage.get('US');
         }
-        return this.cachedAccessToken;
+        return this.cachedUser;
     };
     /**
      * @return {?}
@@ -6513,9 +6598,32 @@ var AuthService = (function () {
         return this.getUser() != null;
     };
     /**
+     * @param {?} roles
+     * @return {?}
+     */
+    AuthService.prototype.userHasRole = function (roles) {
+        var /** @type {?} */ user = this.getUser();
+        if (Array.isArray(roles)) {
+            for (var _i = 0, roles_1 = roles; _i < roles_1.length; _i++) {
+                var role = roles_1[_i];
+                if (user.roles.indexOf(role) >= 0) {
+                    return true;
+                }
+            }
+        }
+        else {
+            if (user.roles.indexOf(roles) >= 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+    /**
      * @return {?}
      */
     AuthService.prototype.logout = function () {
+        this.cachedAccessToken = null;
+        this.cachedUser = null;
         this.localStorage.remove('AT');
         this.localStorage.remove('US');
     };
@@ -6530,49 +6638,65 @@ AuthService.decorators = [
 AuthService.ctorParameters = function () { return [
     { type: Http, },
     { type: LocalStorageService, },
+    { type: EventManagerService, },
 ]; };
-var AppConfig = (function () {
-    function AppConfig() {
+var INITIAL_CONFIG = new _angular_core.InjectionToken('app.config');
+var AppConfigService = (function () {
+    /**
+     * @param {?} config
+     */
+    function AppConfigService(config) {
+        this.initialConfig = config;
     }
     /**
      * @param {?} config
      * @return {?}
      */
-    AppConfig.setInitialConfig = function (config) {
-        AppConfig.initialConfig = config;
+    AppConfigService.prototype.setInitialConfig = function (config) {
+        this.initialConfig = config;
     };
-    Object.defineProperty(AppConfig, "config", {
+    Object.defineProperty(AppConfigService.prototype, "config", {
         /**
          * @return {?}
          */
         get: function () {
-            return AppConfig.initialConfig;
+            return this.initialConfig;
         },
         enumerable: true,
         configurable: true
     });
-    return AppConfig;
+    return AppConfigService;
 }());
+/**
+ * @nocollapse
+ */
+AppConfigService.ctorParameters = function () { return [
+    { type: undefined, decorators: [{ type: _angular_core.Inject, args: [INITIAL_CONFIG,] },] },
+]; };
 var APIService = (function () {
     /**
      * @param {?} http
      * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
      */
-    function APIService(http, authService) {
+    function APIService(http, authService, appConfig, eventsManagerService) {
         this.http = http;
         this.authService = authService;
-        this.apiURL = AppConfig.config.apiURL;
-        this.clientId = AppConfig.config.clientId;
-        this.clientSecret = AppConfig.config.clientSecret;
+        this.appConfig = appConfig;
+        this.eventsManagerService = eventsManagerService;
+        this.apiURL = this.appConfig.config.apiURL;
+        this.clientId = this.appConfig.config.clientId;
+        this.clientSecret = this.appConfig.config.clientSecret;
     }
     /**
      * @param {?} path
-     * @param {?=} query
+     * @param {?=} config
      * @param {?=} options
      * @return {?}
      */
-    APIService.prototype.get = function (path, query, options) {
-        return this.http.get(this.apiURL + '/' + path + this.getUrlParams(query), this.getRequestOptions(options))
+    APIService.prototype.get = function (path, config, options) {
+        return this.http.get(this.apiURL + '/' + path + this.getUrlParams(config), this.getRequestOptions(options))
             .map(this.extractData)
             .catch(this.handleError);
     };
@@ -6620,8 +6744,14 @@ var APIService = (function () {
     APIService.prototype.getRequestOptions = function (options) {
         var /** @type {?} */ headers = new Headers({ 'Content-Type': 'application/json' });
         var /** @type {?} */ requestOptions = new RequestOptions({ headers: headers });
-        if (!options || options.credentials === undefined || options.credentials === true) {
-            headers.append('Authorization', 'Bearer ' + this.authService.getAccessToken());
+        if (!options || options.credentials === undefined || options.credentials === true ||
+            options.credentials === 'app') {
+            if (options !== undefined && options.credentials === 'app') {
+                headers.append('Authorization', 'Bearer ' + this.authService.getAppAccessToken());
+            }
+            else {
+                headers.append('Authorization', 'Bearer ' + this.authService.getAccessToken());
+            }
         }
         return requestOptions;
     };
@@ -6636,7 +6766,18 @@ var APIService = (function () {
             var /** @type {?} */ keys = Object.keys(data);
             for (var _i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
                 var key = keys_1[_i];
-                params.push(key + '=' + encodeURIComponent(data[key]));
+                if (data[key] !== undefined && String(data[key]).length > 0) {
+                    var /** @type {?} */ keyValue = data[key];
+                    if (typeof keyValue === 'object') {
+                        try {
+                            keyValue = JSON.stringify(keyValue);
+                        }
+                        catch (err) {
+                            // do nothing
+                        }
+                    }
+                    params.push(key + '=' + encodeURIComponent(keyValue));
+                }
             }
             if (params.length > 0) {
                 urlParams = '?' + params.join('&');
@@ -6649,8 +6790,7 @@ var APIService = (function () {
      * @return {?}
      */
     APIService.prototype.extractData = function (res) {
-        var /** @type {?} */ body = res.json();
-        return body.data || {};
+        return res.json();
     };
     /**
      * @param {?} error
@@ -6658,16 +6798,16 @@ var APIService = (function () {
      */
     APIService.prototype.handleError = function (error) {
         // TODO use a remote logging infrastructure
-        var /** @type {?} */ errMsg;
+        var /** @type {?} */ errObj;
         if (error instanceof Response) {
             var /** @type {?} */ body = error.json() || '';
             var /** @type {?} */ err = body.error || JSON.stringify(body);
-            errMsg = error.status + " - " + (error.statusText || '') + " " + err;
+            errObj = err;
         }
         else {
-            errMsg = error.message ? error.message : error.toString();
+            errObj = error;
         }
-        return rxjs_Observable.Observable.throw(errMsg);
+        return rxjs_Observable.Observable.throw(errObj);
     };
     return APIService;
 }());
@@ -6680,6 +6820,8 @@ APIService.decorators = [
 APIService.ctorParameters = function () { return [
     { type: Http, },
     { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
 ]; };
 var CRUDService = (function (_super) {
     __extends(CRUDService, _super);
@@ -6687,11 +6829,15 @@ var CRUDService = (function (_super) {
      * @param {?} resourceName
      * @param {?} http
      * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
      */
-    function CRUDService(resourceName, http, authService) {
-        var _this = _super.call(this, http, authService) || this;
+    function CRUDService(resourceName, http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, http, authService, appConfig, eventsManagerService) || this;
         _this.http = http;
         _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
         _this.localResourceIdName = '_id';
         _this.resourceName = resourceName;
         return _this;
@@ -6713,48 +6859,91 @@ var CRUDService = (function (_super) {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(CRUDService.prototype, "resource", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.resourceName;
+        },
+        enumerable: true,
+        configurable: true
+    });
     /**
-     * @param {?=} query
-     * @param {?=} limit
-     * @param {?=} fields
-     * @param {?=} sort
+     * @param {?=} config
      * @param {?=} options
      * @return {?}
      */
-    CRUDService.prototype.list = function (query, limit, fields, sort, options) {
-        if (query === void 0) { query = {}; }
-        return this.get(this.resourceName, { query: query, fields: fields, sort: sort }, options);
+    CRUDService.prototype.list = function (config, options) {
+        return this.get(this.resourceName, config, options);
     };
     /**
      * @param {?} resourceId
-     * @param {?=} fields
-     * @param {?=} options
+     * @param {?=} config
      * @return {?}
      */
-    CRUDService.prototype.read = function (resourceId, fields, options) {
+    CRUDService.prototype.read = function (resourceId, config) {
+        if (config === void 0) { config = {}; }
+        var fields = config.fields, options = config.options;
         return this.get(this.resourceName + '/' + resourceId, { fields: fields }, options);
     };
     /**
      * @param {?} resource
-     * @param {?} data
-     * @param {?} options
+     * @param {?=} options
      * @return {?}
      */
-    CRUDService.prototype.save = function (resource, data, options) {
+    CRUDService.prototype.save = function (resource, options) {
         if (resource[this.resourceIdName]) {
-            return this.put(this.resourceName + '/' + resource[this.resourceIdName], data, options);
+            return this.put(this.resourceName + '/' + resource[this.resourceIdName], resource, options);
         }
         else {
-            return this.post(this.resourceName, data, options);
+            return this.post(this.resourceName, resource, options);
         }
     };
     /**
      * @param {?} resourceId
-     * @param {?} options
+     * @param {?=} options
      * @return {?}
      */
     CRUDService.prototype.delete = function (resourceId, options) {
         return _super.prototype.delete.call(this, this.resourceName + '/' + resourceId, options);
+    };
+    /**
+     * @param {?} resource
+     * @param {?} type
+     * @param {?} parent
+     * @param {?=} context
+     * @return {?}
+     */
+    CRUDService.prototype.addParent = function (resource, type, parent, context) {
+        var /** @type {?} */ existingParentIndex = -1;
+        if (!resource.parents) {
+            resource.parents = [];
+        }
+        else {
+            existingParentIndex = resource.parents.findIndex(function (item) {
+                if (context) {
+                    return item.id == parent._id && item.type == type && item.context == context;
+                }
+                else {
+                    return item.id == parent._id && item.type == type;
+                }
+            });
+        }
+        if (!parent || !parent._id) {
+            throw new Error('Invalid parent or parent.id when adding');
+        }
+        var /** @type {?} */ parentObject = { id: parent._id, type: type, name: parent.name };
+        if (context) {
+            parentObject.context = context;
+        }
+        if (existingParentIndex >= 0) {
+            resource.parents[existingParentIndex] = parentObject;
+        }
+        else {
+            resource.parents.push(parentObject);
+        }
+        return resource;
     };
     return CRUDService;
 }(APIService));
@@ -6768,43 +6957,38 @@ CRUDService.ctorParameters = function () { return [
     null,
     { type: Http, },
     { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
 ]; };
 var UsersService = (function (_super) {
     __extends(UsersService, _super);
     /**
      * @param {?} http
      * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
      */
-    function UsersService(http, authService) {
-        var _this = _super.call(this, 'users', http, authService) || this;
+    function UsersService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'users', http, authService, appConfig, eventsManagerService) || this;
         _this.http = http;
         _this.authService = authService;
-        _this.localOnUserLogsIn = new rxjs_Subject.Subject();
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
         return _this;
     }
-    Object.defineProperty(UsersService.prototype, "onUserLogsIn", {
-        /**
-         * @return {?}
-         */
-        get: function () {
-            return this.localOnUserLogsIn.asObservable();
-        },
-        enumerable: true,
-        configurable: true
-    });
     /**
-     * @param {?} username
-     * @param {?} password
+     * @param {?} data
      * @return {?}
      */
-    UsersService.prototype.login = function (username, password) {
+    UsersService.prototype.register = function (data) {
         var _this = this;
-        return this.post('login', { username: username, password: password }, null, { credentials: false })
+        return this.post(this.resource + '/register', data, null, { credentials: 'app' })
             .map(function (loginResponse) {
             if (loginResponse && loginResponse.access_token) {
                 var /** @type {?} */ accessToken = loginResponse.access_token;
                 _this.authService.setAccessToken(accessToken);
-                _this.localOnUserLogsIn.next();
+                _this.authService.setUser(loginResponse.data.identity);
+                _this.eventsManagerService.trigger(EventManagerService.ON_USER_SIGN_IN);
             }
             return rxjs_Observable.Observable.of(loginResponse);
         });
@@ -6826,6 +7010,228 @@ UsersService.decorators = [
 UsersService.ctorParameters = function () { return [
     { type: Http, },
     { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var Oauth2Service = (function (_super) {
+    __extends(Oauth2Service, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function Oauth2Service(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'oauth2', http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    /**
+     * @param {?} username
+     * @param {?} password
+     * @return {?}
+     */
+    Oauth2Service.prototype.login = function (username, password) {
+        var _this = this;
+        return this.post(this.resource + '/token', {
+            password: password,
+            username: username,
+            grant_type: 'password'
+        }, null, { credentials: 'app' })
+            .map(function (loginResponse) {
+            if (loginResponse && loginResponse.access_token) {
+                var /** @type {?} */ accessToken = loginResponse.access_token;
+                _this.authService.setAccessToken(accessToken);
+                _this.authService.setUser(loginResponse.data.identity);
+                _this.eventsManagerService.trigger(EventManagerService.ON_USER_SIGN_IN);
+            }
+            return rxjs_Observable.Observable.of(loginResponse);
+        });
+    };
+    /**
+     * @param {?=} clientId
+     * @param {?=} clientSecret
+     * @return {?}
+     */
+    Oauth2Service.prototype.appLogin = function (clientId, clientSecret) {
+        var _this = this;
+        if (!clientId) {
+            clientId = this.appConfig.config.clientId;
+        }
+        if (!clientSecret) {
+            clientSecret = this.appConfig.config.clientSecret;
+        }
+        return this.post(this.resource + '/token', {
+            client_id: clientId,
+            client_secret: clientSecret,
+            grant_type: 'client_credentials'
+        }, null, { credentials: false })
+            .map(function (loginResponse) {
+            if (loginResponse && loginResponse.access_token) {
+                var /** @type {?} */ accessToken = loginResponse.access_token;
+                _this.authService.setAppAccessToken(accessToken);
+            }
+            return rxjs_Observable.Observable.of(loginResponse);
+        });
+    };
+    /**
+     * @return {?}
+     */
+    Oauth2Service.prototype.logout = function () {
+        this.eventsManagerService.trigger(EventManagerService.ON_USER_SIGN_OUT);
+        this.authService.logout();
+    };
+    return Oauth2Service;
+}(CRUDService));
+Oauth2Service.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+Oauth2Service.ctorParameters = function () { return [
+    { type: Http, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var CompaniesService = (function (_super) {
+    __extends(CompaniesService, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function CompaniesService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'companies', http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    return CompaniesService;
+}(CRUDService));
+CompaniesService.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+CompaniesService.ctorParameters = function () { return [
+    { type: Http, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var OrdersService = (function (_super) {
+    __extends(OrdersService, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function OrdersService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'orders', http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    return OrdersService;
+}(CRUDService));
+OrdersService.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+OrdersService.ctorParameters = function () { return [
+    { type: Http, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var GeoLocationService = (function (_super) {
+    __extends(GeoLocationService, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function GeoLocationService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    /**
+     * @param {?} lat
+     * @param {?} lng
+     * @return {?}
+     */
+    GeoLocationService.prototype.getAddressFromLocation = function (lat, lng) {
+        return this.get('geolocation/address-from-location', { query: { lat: lat, lng: lng } });
+    };
+    /**
+     * @param {?} address
+     * @return {?}
+     */
+    GeoLocationService.prototype.getLocationFromAddress = function (address) {
+        return this.get('geolocation/location-from-address', { query: { address: address } });
+    };
+    return GeoLocationService;
+}(APIService));
+GeoLocationService.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+GeoLocationService.ctorParameters = function () { return [
+    { type: Http, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var ServicesService = (function (_super) {
+    __extends(ServicesService, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function ServicesService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'services', http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    return ServicesService;
+}(CRUDService));
+ServicesService.decorators = [
+    { type: _angular_core.Injectable },
+];
+/**
+ * @nocollapse
+ */
+ServicesService.ctorParameters = function () { return [
+    { type: Http, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
 ]; };
 var LizardSDKModule = (function () {
     function LizardSDKModule() {
@@ -6835,14 +7241,24 @@ var LizardSDKModule = (function () {
      * @return {?}
      */
     LizardSDKModule.forRoot = function (config) {
-        AppConfig.setInitialConfig(config);
         return {
             ngModule: LizardSDKModule,
             providers: [
+                {
+                    provide: INITIAL_CONFIG,
+                    useValue: config
+                },
                 LocalStorageService,
                 AuthService,
                 APIService,
-                UsersService
+                AppConfigService,
+                EventManagerService,
+                UsersService,
+                Oauth2Service,
+                CompaniesService,
+                OrdersService,
+                GeoLocationService,
+                ServicesService
             ]
         };
     };
@@ -6856,7 +7272,14 @@ var LizardSDKModule = (function () {
                 APIService,
                 AuthService,
                 APIService,
-                UsersService
+                AppConfigService,
+                EventManagerService,
+                UsersService,
+                Oauth2Service,
+                CompaniesService,
+                OrdersService,
+                GeoLocationService,
+                ServicesService
             ]
         };
     };
@@ -6876,9 +7299,17 @@ LizardSDKModule.ctorParameters = function () { return []; };
 exports.LocalStorageService = LocalStorageService;
 exports.AuthService = AuthService;
 exports.APIService = APIService;
+exports.CRUDService = CRUDService;
 exports.UsersService = UsersService;
+exports.Oauth2Service = Oauth2Service;
+exports.CompaniesService = CompaniesService;
+exports.OrdersService = OrdersService;
+exports.GeoLocationService = GeoLocationService;
+exports.ServicesService = ServicesService;
+exports.EventManagerService = EventManagerService;
+exports.AppConfigService = AppConfigService;
 exports.LizardSDKModule = LizardSDKModule;
-exports.ɵa = CRUDService;
+exports.ɵa = INITIAL_CONFIG;
 
 Object.defineProperty(exports, '__esModule', { value: true });
 

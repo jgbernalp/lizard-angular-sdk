@@ -28,7 +28,7 @@ export class LocalStorageService {
     }
 
     public remove(key: string) {
-        localStorage.removeItem(key);
+        localStorage.removeItem(this.prefix + key);
     }
 
 }

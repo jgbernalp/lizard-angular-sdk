@@ -4,9 +4,13 @@ import { Http, Response, Headers, RequestOptions } from '@angular/http';
 import { Observable } from 'rxjs/Observable';
 import 'rxjs/add/operator/catch';
 import 'rxjs/add/operator/map';
+import 'rxjs/add/observable/throw';
 
 import { AuthService } from './auth.service';
-import { AppConfig } from './app-config.factory';
+import { AppConfigService } from './app-config.service';
+import { EventManagerService } from '../common/event-manager.service';
+
+import { IListOptions } from '../common/list-options.interface';
 
 @Injectable()
 export class APIService {
@@ -14,15 +18,19 @@ export class APIService {
     private clientId: string | undefined;
     private clientSecret: string | undefined;
 
-    constructor(public http: Http, public authService: AuthService) {
-        this.apiURL = AppConfig.config.apiURL;
-        this.clientId = AppConfig.config.clientId;
-        this.clientSecret = AppConfig.config.clientSecret;
+    constructor(public http: Http,
+        public authService: AuthService,
+        public appConfig: AppConfigService,
+        public eventsManagerService: EventManagerService
+    ) {
+        this.apiURL = this.appConfig.config.apiURL;
+        this.clientId = this.appConfig.config.clientId;
+        this.clientSecret = this.appConfig.config.clientSecret;
     }
 
-    public get(path: string, query?: any, options?: any): Observable<any> {
-        return this.http.get(this.apiURL + '/' + path + this.getUrlParams(query),
-            this.getRequestOptions(options))
+    public get(path: string, config?: IListOptions, options?: any): Observable<any> {
+        return this.http.get(
+            this.apiURL + '/' + path + this.getUrlParams(config), this.getRequestOptions(options))
             .map(this.extractData)
             .catch(this.handleError);
     }
@@ -52,8 +60,14 @@ export class APIService {
         const headers = new Headers({ 'Content-Type': 'application/json' });
         const requestOptions = new RequestOptions({ headers });
 
-        if (!options || options.credentials === undefined || options.credentials === true) {
-            headers.append('Authorization', 'Bearer ' + this.authService.getAccessToken());
+        if (!options || options.credentials === undefined || options.credentials === true ||
+            options.credentials === 'app') {
+
+            if (options !== undefined && options.credentials === 'app') {
+                headers.append('Authorization', 'Bearer ' + this.authService.getAppAccessToken());
+            } else {
+                headers.append('Authorization', 'Bearer ' + this.authService.getAccessToken());
+            }
         }
 
         return requestOptions;
@@ -66,7 +80,18 @@ export class APIService {
             const params = [];
             const keys = Object.keys(data);
             for (const key of keys) {
-                params.push(key + '=' + encodeURIComponent(data[key]));
+                if (data[key] !== undefined && String(data[key]).length > 0) {
+                    let keyValue = data[key];
+                    if (typeof keyValue === 'object') {
+                        try {
+                            keyValue = JSON.stringify(keyValue);
+                        } catch (err) {
+                            // do nothing
+                        }
+                    }
+
+                    params.push(key + '=' + encodeURIComponent(keyValue));
+                }
             }
 
             if (params.length > 0) {
@@ -78,21 +103,20 @@ export class APIService {
     }
 
     private extractData(res: Response) {
-        const body = res.json();
-        return body.data || {};
+        return res.json();
     }
 
     private handleError(error: Response | any) {
         // TODO use a remote logging infrastructure
-        let errMsg: string;
+        let errObj: any;
         if (error instanceof Response) {
             const body = error.json() || '';
             const err = body.error || JSON.stringify(body);
-            errMsg = `${error.status} - ${error.statusText || ''} ${err}`;
+            errObj = err;
         } else {
-            errMsg = error.message ? error.message : error.toString();
+            errObj = error;
         }
-        return Observable.throw(errMsg);
+        return Observable.throw(errObj);
     }
 
 }
