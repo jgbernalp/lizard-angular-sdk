@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
-import { Http, Response, Headers, RequestOptions } from '@angular/http';
+import { Response, Headers, RequestOptions } from '@angular/http';
+
+import { HttpInterceptor } from '../common/http-interceptor.service';
 
 import { Observable } from 'rxjs/Observable';
 import 'rxjs/add/operator/catch';
@@ -18,7 +20,7 @@ export class APIService {
     private clientId: string | undefined;
     private clientSecret: string | undefined;
 
-    constructor(public http: Http,
+    constructor(public http: HttpInterceptor,
         public authService: AuthService,
         public appConfig: AppConfigService,
         public eventsManagerService: EventManagerService

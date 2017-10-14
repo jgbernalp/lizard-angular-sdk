@@ -13,7 +13,9 @@ export declare class AuthService {
     setAppAccessToken(accessToken: string): void;
     getAccessToken(): string | null;
     getAppAccessToken(): string | null;
+    getRefreshToken(): any;
     setUser(user: any): void;
+    setRefreshToken(refreshToken: string): void;
     getUser(): any;
     isLoggedIn(): boolean;
     userHasRole(roles: string[] | string): boolean;

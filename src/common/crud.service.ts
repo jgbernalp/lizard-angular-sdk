@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
-import { Http, Response, Headers, RequestOptions } from '@angular/http';
+import { Response, Headers, RequestOptions } from '@angular/http';
 
 import { Observable } from 'rxjs/Observable';
+
+import { HttpInterceptor } from '../common/http-interceptor.service'
 
 import { APIService } from './api.service';
 import { AuthService } from './auth.service';
@@ -28,7 +30,7 @@ export class CRUDService extends APIService {
     }
 
     constructor(resourceName: string,
-        public http: Http,
+        public http: HttpInterceptor,
         public authService: AuthService,
         public appConfig: AppConfigService,
         public eventsManagerService: EventManagerService

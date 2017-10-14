@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Http } from '@angular/http';
+import { HttpInterceptor } from '../common/http-interceptor.service';
 
 import { AuthService } from '../common/auth.service';
 import { APIService } from '../common/api.service';
@@ -11,7 +11,7 @@ import { Observable } from 'rxjs/Observable';
 
 @Injectable()
 export class GeoLocationService extends APIService {
-    constructor(public http: Http,
+    constructor(public http: HttpInterceptor,
         public authService: AuthService,
         public appConfig: AppConfigService,
         public eventsManagerService: EventManagerService

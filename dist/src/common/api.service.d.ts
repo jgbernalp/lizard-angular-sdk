@@ -1,4 +1,4 @@
-import { Http } from '@angular/http';
+import { HttpInterceptor } from '../common/http-interceptor.service';
 import { Observable } from 'rxjs/Observable';
 import 'rxjs/add/operator/catch';
 import 'rxjs/add/operator/map';
@@ -8,14 +8,14 @@ import { AppConfigService } from './app-config.service';
 import { EventManagerService } from '../common/event-manager.service';
 import { IListOptions } from '../common/list-options.interface';
 export declare class APIService {
-    http: Http;
+    http: HttpInterceptor;
     authService: AuthService;
     appConfig: AppConfigService;
     eventsManagerService: EventManagerService;
     private apiURL;
     private clientId;
     private clientSecret;
-    constructor(http: Http, authService: AuthService, appConfig: AppConfigService, eventsManagerService: EventManagerService);
+    constructor(http: HttpInterceptor, authService: AuthService, appConfig: AppConfigService, eventsManagerService: EventManagerService);
     get(path: string, config?: IListOptions, options?: any): Observable<any>;
     put(path: string, data?: any, query?: any, options?: any): Observable<any>;
     post(path: string, data?: any, query?: any, options?: any): Observable<any>;

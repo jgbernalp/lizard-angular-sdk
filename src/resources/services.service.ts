@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Http } from '@angular/http';
+import { HttpInterceptor } from '../common/http-interceptor.service';
 
 import { AuthService } from '../common/auth.service';
 import { CRUDService } from '../common/crud.service';
@@ -9,7 +9,7 @@ import { EventManagerService } from '../common/event-manager.service';
 
 @Injectable()
 export class ServicesService extends CRUDService {
-    constructor(public http: Http,
+    constructor(public http: HttpInterceptor,
         public authService: AuthService,
         public appConfig: AppConfigService,
         public eventsManagerService: EventManagerService

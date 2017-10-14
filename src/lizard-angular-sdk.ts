@@ -10,6 +10,7 @@ export { CompaniesService } from './resources/companies.service';
 export { OrdersService } from './resources/orders.service';
 export { GeoLocationService } from './resources/geo-location.service';
 export { ServicesService } from './resources/services.service';
+export { ConfigurationsService } from './resources/configurations.service';
 
 export { EventManagerService } from './common/event-manager.service';
 

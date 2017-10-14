@@ -42,11 +42,21 @@ export class AuthService {
         return this.cachedAppAccessToken;
     }
 
+    public getRefreshToken() {
+        return this.localStorage.get('RT');
+    }
+
     public setUser(user: any) {
         this.cachedUser = user;
         this.localStorage.set('US', user);
 
         this.eventManager.trigger(EventManagerService.ON_USER_CHANGED, user);
+    }
+
+    public setRefreshToken(refreshToken: string) {
+        this.localStorage.set('RT', refreshToken);
+
+        this.eventManager.trigger(EventManagerService.ON_TOKEN_REFRESHED, refreshToken);
     }
 
     public getUser(): any {
@@ -83,6 +93,7 @@ export class AuthService {
         this.cachedAccessToken = null;
         this.cachedUser = null;
         this.localStorage.remove('AT');
+        this.localStorage.remove('RT');
         this.localStorage.remove('US');
     }
 }

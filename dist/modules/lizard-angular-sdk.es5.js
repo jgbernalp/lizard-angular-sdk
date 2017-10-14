@@ -11,11 +11,13 @@ var __extends = (this && this.__extends) || (function () {
 import { Inject, Injectable, InjectionToken, NgModule } from '@angular/core';
 import 'rxjs/add/operator/catch';
 import 'rxjs/add/operator/map';
-import { Headers, Http, RequestOptions, Response } from '@angular/http';
+import { Headers, Http, Request, RequestOptions, Response, XHRBackend } from '@angular/http';
 import { Subject } from 'rxjs/Subject';
 import { Observable } from 'rxjs/Observable';
+import 'rxjs/add/operator/mergeMap';
 import 'rxjs/add/observable/throw';
 import 'rxjs/add/observable/of';
+import 'rxjs/add/operator/first';
 var LocalStorageService = (function () {
     function LocalStorageService() {
         this.prefix = 'lizard-';
@@ -63,7 +65,9 @@ var EventManagerService = (function () {
         this.events = {
             '_onUserSignOut': new Subject(),
             '_onUserSignIn': new Subject(),
-            '_onUserChanged': new Subject()
+            '_onUserChanged': new Subject(),
+            '_onTokenRefreshed': new Subject(),
+            '_refreshToken': new Subject()
         };
     }
     Object.defineProperty(EventManagerService.prototype, "onUserSignIn", {
@@ -96,6 +100,26 @@ var EventManagerService = (function () {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(EventManagerService.prototype, "onTokenRefreshed", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.events['_onTokenRefreshed'].asObservable();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(EventManagerService.prototype, "refreshToken", {
+        /**
+         * @return {?}
+         */
+        get: function () {
+            return this.events['_refreshToken'].asObservable();
+        },
+        enumerable: true,
+        configurable: true
+    });
     /**
      * @param {?} event
      * @param {?=} data
@@ -111,6 +135,8 @@ var EventManagerService = (function () {
 EventManagerService.ON_USER_SIGN_OUT = '_onUserSignOut';
 EventManagerService.ON_USER_SIGN_IN = '_onUserSignIn';
 EventManagerService.ON_USER_CHANGED = '_onUserChanged';
+EventManagerService.ON_TOKEN_REFRESHED = '_onTokenRefreshed';
+EventManagerService.REFRESH_TOKEN = '_refreshToken';
 EventManagerService.decorators = [
     { type: Injectable },
 ];
@@ -164,6 +190,12 @@ var AuthService = (function () {
         return this.cachedAppAccessToken;
     };
     /**
+     * @return {?}
+     */
+    AuthService.prototype.getRefreshToken = function () {
+        return this.localStorage.get('RT');
+    };
+    /**
      * @param {?} user
      * @return {?}
      */
@@ -171,6 +203,14 @@ var AuthService = (function () {
         this.cachedUser = user;
         this.localStorage.set('US', user);
         this.eventManager.trigger(EventManagerService.ON_USER_CHANGED, user);
+    };
+    /**
+     * @param {?} refreshToken
+     * @return {?}
+     */
+    AuthService.prototype.setRefreshToken = function (refreshToken) {
+        this.localStorage.set('RT', refreshToken);
+        this.eventManager.trigger(EventManagerService.ON_TOKEN_REFRESHED, refreshToken);
     };
     /**
      * @return {?}
@@ -215,6 +255,7 @@ var AuthService = (function () {
         this.cachedAccessToken = null;
         this.cachedUser = null;
         this.localStorage.remove('AT');
+        this.localStorage.remove('RT');
         this.localStorage.remove('US');
     };
     return AuthService;
@@ -228,6 +269,89 @@ AuthService.decorators = [
 AuthService.ctorParameters = function () { return [
     { type: Http, },
     { type: LocalStorageService, },
+    { type: EventManagerService, },
+]; };
+var HttpInterceptor = (function (_super) {
+    __extends(HttpInterceptor, _super);
+    /**
+     * @param {?} backend
+     * @param {?} options
+     * @param {?} eventManager
+     */
+    function HttpInterceptor(backend, options, eventManager) {
+        var _this = _super.call(this, backend, options) || this;
+        _this.eventManager = eventManager;
+        _this.notifier = new Subject();
+        _this.refreshingToken = false;
+        _this.eventManager.onTokenRefreshed.subscribe(function (_a) {
+            var newAccessToken = _a.newAccessToken;
+            _this.refreshingToken = false;
+            _this.notifier.next(newAccessToken);
+        });
+        return _this;
+    }
+    /**
+     * @param {?} headers
+     * @param {?} newAccessToken
+     * @return {?}
+     */
+    HttpInterceptor.prototype.getNewHeaders = function (headers, newAccessToken) {
+        headers.set('authorization', newAccessToken);
+        return headers;
+    };
+    /**
+     * @param {?} url
+     * @param {?=} options
+     * @return {?}
+     */
+    HttpInterceptor.prototype.request = function (url, options) {
+        var _this = this;
+        var /** @type {?} */ requestUrl = (url);
+        if (requestUrl.url.indexOf('oauth2/token') >= 0) {
+            return _super.prototype.request.call(this, url, options);
+        }
+        else if (this.refreshingToken) {
+            return this.notifier.asObservable().flatMap(function () {
+                return _super.prototype.request.call(_this, url, options);
+            });
+        }
+        else {
+            return _super.prototype.request.call(this, url, options).catch(function (error) {
+                if (error && error.status == 401) {
+                    var /** @type {?} */ body = JSON.parse(error._body);
+                    if (body && body.error && body.error.code == 100) {
+                        _this.refreshingToken = true;
+                        _this.eventManager.trigger(EventManagerService.REFRESH_TOKEN);
+                        return _this.notifier.asObservable().flatMap(function (newAccessToken) {
+                            var /** @type {?} */ newRequest = new Request({
+                                headers: _this.getNewHeaders(requestUrl.headers, newAccessToken),
+                                url: requestUrl.url,
+                                body: requestUrl.getBody(),
+                                method: requestUrl.method,
+                                responseType: requestUrl.responseType
+                            });
+                            return _super.prototype.request.call(_this, newRequest, options);
+                        });
+                    }
+                    else {
+                        return Observable.throw(error);
+                    }
+                }
+                return Observable.throw(error);
+            });
+        }
+    };
+    return HttpInterceptor;
+}(Http));
+HttpInterceptor.decorators = [
+    { type: Injectable },
+];
+/**
+ * @nocollapse
+ */
+HttpInterceptor.ctorParameters = function () { return [
+    { type: XHRBackend, },
+    { type: RequestOptions, },
     { type: EventManagerService, },
 ]; };
 var INITIAL_CONFIG = new InjectionToken('app.config');
@@ -408,7 +532,7 @@ APIService.decorators = [
  * @nocollapse
  */
 APIService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -545,7 +669,7 @@ CRUDService.decorators = [
  */
 CRUDService.ctorParameters = function () { return [
     null,
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -584,6 +708,28 @@ var UsersService = (function (_super) {
         });
     };
     /**
+     * @param {?} username
+     * @return {?}
+     */
+    UsersService.prototype.recoverPassword = function (username) {
+        return this.post(this.resource + '/password/recover', { username: username }, null, { credentials: 'app' });
+    };
+    /**
+     * @param {?} recoveryCode
+     * @param {?} password
+     * @return {?}
+     */
+    UsersService.prototype.resetPassword = function (recoveryCode, password) {
+        return this.post(this.resource + '/password/reset', { recoveryCode: recoveryCode, password: password }, null, { credentials: 'app' });
+    };
+    /**
+     * @param {?} email
+     * @return {?}
+     */
+    UsersService.prototype.invite = function (email) {
+        return this.post(this.resource + '/invite', { email: email });
+    };
+    /**
      * @return {?}
      */
     UsersService.prototype.logout = function () {
@@ -598,7 +744,7 @@ UsersService.decorators = [
  * @nocollapse
  */
 UsersService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -620,6 +766,15 @@ var Oauth2Service = (function (_super) {
         return _this;
     }
     /**
+     * @return {?}
+     */
+    Oauth2Service.prototype.init = function () {
+        var _this = this;
+        this.eventsManagerService.refreshToken.subscribe(function () {
+            _this.refreshToken(_this.authService.getRefreshToken()).first().subscribe();
+        });
+    };
+    /**
      * @param {?} username
      * @param {?} password
      * @return {?}
@@ -636,6 +791,10 @@ var Oauth2Service = (function (_super) {
                 var /** @type {?} */ accessToken = loginResponse.access_token;
                 _this.authService.setAccessToken(accessToken);
                 _this.authService.setUser(loginResponse.data.identity);
+                if (loginResponse.refresh_token) {
+                    var /** @type {?} */ refreshToken = loginResponse.refresh_token;
+                    _this.authService.setRefreshToken(refreshToken);
+                }
                 _this.eventsManagerService.trigger(EventManagerService.ON_USER_SIGN_IN);
             }
             return Observable.of(loginResponse);
@@ -668,6 +827,27 @@ var Oauth2Service = (function (_super) {
         });
     };
     /**
+     * @param {?} refreshToken
+     * @return {?}
+     */
+    Oauth2Service.prototype.refreshToken = function (refreshToken) {
+        var _this = this;
+        return this.post(this.resource + '/token', {
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token'
+        }, null, { credentials: false })
+            .map(function (refreshTokenResponse) {
+            if (refreshTokenResponse && refreshTokenResponse.refresh_token) {
+                var /** @type {?} */ refreshToken_1 = refreshTokenResponse.refresh_token;
+                var /** @type {?} */ accessToken = refreshTokenResponse.access_token;
+                _this.authService.setAccessToken(accessToken);
+                _this.authService.setRefreshToken(refreshToken_1);
+                _this.eventsManagerService.trigger(EventManagerService.ON_TOKEN_REFRESHED, { newAccessToken: accessToken, newRefreshToken: refreshToken_1 });
+            }
+            return Observable.of(refreshTokenResponse);
+        });
+    };
+    /**
      * @return {?}
      */
     Oauth2Service.prototype.logout = function () {
@@ -683,7 +863,7 @@ Oauth2Service.decorators = [
  * @nocollapse
  */
 Oauth2Service.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -713,7 +893,7 @@ CompaniesService.decorators = [
  * @nocollapse
  */
 CompaniesService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -743,7 +923,7 @@ OrdersService.decorators = [
  * @nocollapse
  */
 OrdersService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -788,7 +968,7 @@ GeoLocationService.decorators = [
  * @nocollapse
  */
 GeoLocationService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -818,7 +998,37 @@ ServicesService.decorators = [
  * @nocollapse
  */
 ServicesService.ctorParameters = function () { return [
-    { type: Http, },
+    { type: HttpInterceptor, },
+    { type: AuthService, },
+    { type: AppConfigService, },
+    { type: EventManagerService, },
+]; };
+var ConfigurationsService = (function (_super) {
+    __extends(ConfigurationsService, _super);
+    /**
+     * @param {?} http
+     * @param {?} authService
+     * @param {?} appConfig
+     * @param {?} eventsManagerService
+     */
+    function ConfigurationsService(http, authService, appConfig, eventsManagerService) {
+        var _this = _super.call(this, 'configurations', http, authService, appConfig, eventsManagerService) || this;
+        _this.http = http;
+        _this.authService = authService;
+        _this.appConfig = appConfig;
+        _this.eventsManagerService = eventsManagerService;
+        return _this;
+    }
+    return ConfigurationsService;
+}(CRUDService));
+ConfigurationsService.decorators = [
+    { type: Injectable },
+];
+/**
+ * @nocollapse
+ */
+ConfigurationsService.ctorParameters = function () { return [
+    { type: HttpInterceptor, },
     { type: AuthService, },
     { type: AppConfigService, },
     { type: EventManagerService, },
@@ -843,12 +1053,14 @@ var LizardSDKModule = (function () {
                 APIService,
                 AppConfigService,
                 EventManagerService,
+                HttpInterceptor,
                 UsersService,
                 Oauth2Service,
                 CompaniesService,
                 OrdersService,
                 GeoLocationService,
-                ServicesService
+                ServicesService,
+                ConfigurationsService
             ]
         };
     };
@@ -864,12 +1076,14 @@ var LizardSDKModule = (function () {
                 APIService,
                 AppConfigService,
                 EventManagerService,
+                HttpInterceptor,
                 UsersService,
                 Oauth2Service,
                 CompaniesService,
                 OrdersService,
                 GeoLocationService,
-                ServicesService
+                ServicesService,
+                ConfigurationsService
             ]
         };
     };
@@ -892,5 +1106,5 @@ LizardSDKModule.ctorParameters = function () { return []; };
 /**
  * Generated bundle index. Do not edit.
  */
-export { LocalStorageService, AuthService, APIService, CRUDService, UsersService, Oauth2Service, CompaniesService, OrdersService, GeoLocationService, ServicesService, EventManagerService, AppConfigService, LizardSDKModule, INITIAL_CONFIG as ɵa };
+export { LocalStorageService, AuthService, APIService, CRUDService, UsersService, Oauth2Service, CompaniesService, OrdersService, GeoLocationService, ServicesService, ConfigurationsService, EventManagerService, AppConfigService, LizardSDKModule, HttpInterceptor as ɵa, INITIAL_CONFIG as ɵb };
 //# sourceMappingURL=lizard-angular-sdk.es5.js.map

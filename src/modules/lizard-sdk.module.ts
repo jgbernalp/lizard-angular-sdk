@@ -6,6 +6,9 @@ import { APIService } from '../common/api.service';
 import { ILizardConfig } from '../common/lizard-config.interface';
 import { AppConfigService } from '../common/app-config.service';
 import { EventManagerService } from '../common/event-manager.service';
+import { HttpInterceptor } from '../common/http-interceptor.service';
+
+import { HttpModule } from '@angular/http';
 
 import { INITIAL_CONFIG } from '../lizard-initial-config';
 
@@ -15,6 +18,7 @@ import { CompaniesService } from '../resources/companies.service';
 import { OrdersService } from '../resources/orders.service';
 import { ServicesService } from '../resources/services.service';
 import { GeoLocationService } from '../resources/geo-location.service';
+import { ConfigurationsService } from '../resources/configurations.service';
 
 @NgModule({
     declarations: [
@@ -40,13 +44,15 @@ export class LizardSDKModule {
                 APIService,
                 AppConfigService,
                 EventManagerService,
+                HttpInterceptor,
 
                 UsersService,
                 Oauth2Service,
                 CompaniesService,
                 OrdersService,
                 GeoLocationService,
-                ServicesService
+                ServicesService,
+                ConfigurationsService
             ]
         };
     }
@@ -60,13 +66,15 @@ export class LizardSDKModule {
                 APIService,
                 AppConfigService,
                 EventManagerService,
+                HttpInterceptor,
 
                 UsersService,
                 Oauth2Service,
                 CompaniesService,
                 OrdersService,
                 GeoLocationService,
-                ServicesService
+                ServicesService,
+                ConfigurationsService
             ]
         };
     }
